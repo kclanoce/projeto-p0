@@ -41,7 +41,7 @@ O projeto é desenvolvido incrementalmente em três níveis:
 - Gemini (Google), acessado pela biblioteca `google-genai`
 - `python-dotenv` para carregar a chave de API a partir de um arquivo `.env`
 
-Modelo utilizado: `<ID do modelo>`
+Modelo utilizado: `<gemini-3.5-flash-lite>`
 
 ## Estrutura do projeto
 
