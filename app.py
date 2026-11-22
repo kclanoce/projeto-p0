@@ -1,47 +1,50 @@
-"""P0 - Ficha de artigo: transforma o abstract de um artigo em uma ficha estruturada."""
+"""P0 - Ficha de artigo: ponto de entrada. Orquestra as etapas e conversa com o usuário."""
 
-import os
 import sys
 
-from dotenv import load_dotenv
-from google import genai
-
-MODELO = "gemini-3.5-flash-lite"
-
-PROMPT = """Você recebe o abstract de um artigo científico sobre detecção de anomalias.
-Devolva uma ficha com exatamente estes campos, em português:
-
-- Método:
-- Dataset(s):
-- Métrica(s):
-- Principal resultado:
-
-Se alguma informação não estiver no texto, escreva "não informado".
-Não invente nada além do que está no abstract.
-
-Abstract:
-{abstract}
-"""
+from config import Configuracao, carregar_configuracao
+from erros import ErroApp
+from ficha import montar_prompt, tratar_resposta, validar_entrada
+from llm import chamar_modelo, criar_cliente
 
 
-def gerar_ficha(abstract: str) -> str:
-    """Envia o abstract ao Gemini e devolve a ficha em texto."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    resposta = client.models.generate_content(
-        model=MODELO,
-        contents=PROMPT.format(abstract=abstract),
-    )
-    return resposta.text
+def ler_entrada() -> str:
+    print("Cole o abstract do artigo.")
+    print("Para finalizar: nova linha, depois Ctrl+Z e Enter (Windows) ou Ctrl+D (Linux/Mac).\n")
+    return sys.stdin.read()
 
 
-def main() -> None:
-    load_dotenv()
-    print("Cole o abstract e finalize com uma linha vazia + Ctrl+D (Linux/Mac) ou Ctrl+Z e Enter (Windows):\n")
-    abstract = sys.stdin.read().strip()
-    ficha = gerar_ficha(abstract)
+def gerar_ficha(abstract: str, config: Configuracao, cliente=None) -> str:
+    """Prepara o prompt, chama o modelo e trata a resposta."""
+    prompt = montar_prompt(abstract)
+    cliente = cliente or criar_cliente(config)
+    resposta = chamar_modelo(cliente, config.modelo, prompt)
+    return tratar_resposta(getattr(resposta, "text", None))
+
+
+def exibir_ficha(ficha: str) -> None:
     print("\n--- FICHA ---\n")
     print(ficha)
 
 
+def main() -> int:
+    try:
+        config = carregar_configuracao()
+        abstract = validar_entrada(ler_entrada())
+        ficha = gerar_ficha(abstract, config)
+    except ErroApp as erro:
+        print(f"\nErro: {erro}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nExecução cancelada.", file=sys.stderr)
+        return 130
+    except Exception as erro:  # rede de segurança para falhas não previstas
+        print(f"\nErro inesperado ({type(erro).__name__}). Tente novamente.", file=sys.stderr)
+        return 1
+
+    exibir_ficha(ficha)
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
