@@ -10,6 +10,11 @@ from erros import ErroConfiguracao, ErroCredencial
 CHAVE_EXEMPLO = "coloque_sua_chave_aqui"
 MODELO_EXEMPLO = "id-do-modelo"
 TIMEOUT_PADRAO_S = 30
+MAX_TOKENS_PADRAO = 2048
+TEMPERATURA_PADRAO = 0.2
+NIVEL_LOG_PADRAO = "INFO"
+ARQUIVO_LOG_PADRAO = "app.log"
+NIVEIS_LOG = ("DEBUG", "INFO", "WARNING", "ERROR")
 
 
 @dataclass(frozen=True)
@@ -17,10 +22,43 @@ class Configuracao:
     api_key: str
     modelo: str
     timeout_s: int
+    max_output_tokens: int = MAX_TOKENS_PADRAO
+    temperatura: float = TEMPERATURA_PADRAO
+    nivel_log: str = NIVEL_LOG_PADRAO
+    arquivo_log: str = ARQUIVO_LOG_PADRAO
 
     def __repr__(self) -> str:
         # Evita que a chave apareça sem querer em prints ou logs.
-        return f"Configuracao(api_key='***', modelo={self.modelo!r}, timeout_s={self.timeout_s})"
+        return (
+            f"Configuracao(api_key='***', modelo={self.modelo!r}, timeout_s={self.timeout_s}, "
+            f"max_output_tokens={self.max_output_tokens}, temperatura={self.temperatura}, "
+            f"nivel_log={self.nivel_log!r}, arquivo_log={self.arquivo_log!r})"
+        )
+
+
+def _ler(nome: str, padrao) -> str:
+    return (os.getenv(nome) or str(padrao)).strip()
+
+
+def _inteiro_positivo(nome: str, padrao: int) -> int:
+    try:
+        valor = int(_ler(nome, padrao))
+    except ValueError:
+        valor = 0
+    if valor <= 0:
+        raise ErroConfiguracao(f"{nome} deve ser um número inteiro positivo.")
+    return valor
+
+
+def _temperatura() -> float:
+    texto = _ler("GEMINI_TEMPERATURE", TEMPERATURA_PADRAO).replace(",", ".")
+    try:
+        valor = float(texto)
+    except ValueError:
+        valor = -1.0
+    if not 0.0 <= valor <= 2.0:
+        raise ErroConfiguracao("GEMINI_TEMPERATURE deve ser um número entre 0 e 2.")
+    return valor
 
 
 def carregar_configuracao(ler_dotenv: bool = True) -> Configuracao:
@@ -41,12 +79,16 @@ def carregar_configuracao(ler_dotenv: bool = True) -> Configuracao:
             "O modelo não foi configurado. Preencha GEMINI_MODEL no arquivo .env com o ID do modelo."
         )
 
-    timeout_txt = (os.getenv("GEMINI_TIMEOUT") or str(TIMEOUT_PADRAO_S)).strip()
-    try:
-        timeout_s = int(timeout_txt)
-    except ValueError:
-        timeout_s = 0
-    if timeout_s <= 0:
-        raise ErroConfiguracao("GEMINI_TIMEOUT deve ser um número inteiro positivo, em segundos.")
+    nivel_log = _ler("LOG_LEVEL", NIVEL_LOG_PADRAO).upper()
+    if nivel_log not in NIVEIS_LOG:
+        raise ErroConfiguracao(f"LOG_LEVEL deve ser um destes valores: {', '.join(NIVEIS_LOG)}.")
 
-    return Configuracao(api_key=api_key, modelo=modelo, timeout_s=timeout_s)
+    return Configuracao(
+        api_key=api_key,
+        modelo=modelo,
+        timeout_s=_inteiro_positivo("GEMINI_TIMEOUT", TIMEOUT_PADRAO_S),
+        max_output_tokens=_inteiro_positivo("GEMINI_MAX_OUTPUT_TOKENS", MAX_TOKENS_PADRAO),
+        temperatura=_temperatura(),
+        nivel_log=nivel_log,
+        arquivo_log=_ler("LOG_FILE", ARQUIVO_LOG_PADRAO),
+    )
